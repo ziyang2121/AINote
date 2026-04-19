@@ -2,29 +2,25 @@ import type { Intent } from '@/types/conversation';
 import type { ZhipuMessage } from '@/services/ai';
 import { callApi } from '@/services/ai';
 
-const ALL_INTENTS: Intent[] = [
-  'add_todo', 'update_todo', 'delete_todo', 'list_todo', 'complete_todo',
-  'add_plan', 'update_plan', 'delete_plan', 'list_plan',
-  'add_note', 'update_note', 'delete_note', 'list_note',
+const PLANNING_INTENTS: Intent[] = [
   'plan_weekly', 'plan_study', 'plan_schedule',
   'suggest_todos', 'analyze_progress',
-  'chat', 'unknown',
 ];
 
 /**
- * 当规则匹配未命中时，使用 AI 识别意图
+ * 当规则匹配未命中时，使用 AI 判断是否为规划类意图
  */
 export async function recognizeIntentWithAI(input: string, contextTurn: number): Promise<Intent> {
   const messages: ZhipuMessage[] = [
     {
       role: 'system',
-      content: `你是一个意图分类器。根据用户输入，从以下意图中选择最匹配的一个：
-${ALL_INTENTS.map((i) => `- ${i}`).join('\n')}
+      content: `判断用户输入是否属于以下规划类意图之一：
+${PLANNING_INTENTS.map((i) => `- ${i}`).join('\n')}
 
 规则：
-- 只输出意图名称，不要其他内容
-- 如果无法判断，输出 chat
-- 如果用户在回答之前的追问，根据上下文判断意图`,
+- 如果匹配规划类意图，只输出意图名称
+- 如果不匹配任何规划意图，输出 chat
+- 只输出意图名称，不要其他内容`,
     },
     {
       role: 'user',
@@ -35,7 +31,7 @@ ${ALL_INTENTS.map((i) => `- ${i}`).join('\n')}
   const response = await callApi(messages, { noTools: true });
   const text = (response.content ?? '').trim().toLowerCase();
 
-  for (const intent of ALL_INTENTS) {
+  for (const intent of PLANNING_INTENTS) {
     if (text.includes(intent)) {
       return intent;
     }

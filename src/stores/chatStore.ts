@@ -6,7 +6,6 @@ import { db } from '@/services/db';
 import { sendMessage, sendToolResult, executeAction } from '@/services/ai';
 import type { ZhipuMessage, ZhipuToolCall } from '@/services/ai';
 import { recognizeIntent } from '@/services/intent';
-import { collectSlots, generateAskMessage } from '@/services/slots';
 import { planActions } from '@/services/planning';
 
 interface ChatState {
@@ -57,191 +56,57 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((state) => ({ messages: [...state.messages, userMsg] }));
 
     try {
-      // ---- Phase: slot_filling → user is answering follow-up questions ----
-      if (conversationState.phase === 'slot_filling' && conversationState.currentIntent) {
-        const { slots, missingSlots } = await collectSlots(
-          content,
-          conversationState.currentIntent,
-          conversationState.slots,
-        );
-
-        const newState: ConversationState = {
-          ...conversationState,
-          slots,
-          missingSlots,
-          context: updatedContext,
-        };
-
-        if (missingSlots.length > 0) {
-          const askText = generateAskMessage(conversationState.currentIntent, missingSlots);
-          newState.phase = 'slot_filling';
-
-          const assistantMsg: ChatMessage = {
-            id: crypto.randomUUID(),
-            role: 'assistant',
-            content: askText,
-            actions: [],
-            timestamp: new Date().toISOString(),
-          };
-          await db.chatMessages.add(assistantMsg);
-          set((state) => ({
-            messages: [...state.messages, assistantMsg],
-            conversationState: newState,
-            loading: false,
-          }));
-          return;
-        }
-
-        // Slots complete → plan
-        newState.phase = 'planning';
-        set({ conversationState: newState });
-
-        const actions = await planActions(
-          conversationState.currentIntent,
-          slots,
-          updatedContext,
-        );
-
-        if (actions.length === 0) {
-          const response = await sendMessage(content);
-          newState.phase = 'completed';
-
-          const assistantMsg: ChatMessage = {
-            id: crypto.randomUUID(),
-            role: 'assistant',
-            content: response.text,
-            actions: response.actions,
-            timestamp: new Date().toISOString(),
-          };
-          await db.chatMessages.add(assistantMsg);
-          set((state) => ({
-            messages: [...state.messages, assistantMsg],
-            conversationState: newState,
-            loading: false,
-          }));
-          return;
-        }
-
-        const summaryText = generatePlanSummary(conversationState.currentIntent, actions);
-        newState.phase = 'executing';
-
-        const assistantMsg: ChatMessage = {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: summaryText,
-          actions,
-          timestamp: new Date().toISOString(),
-        };
-        await db.chatMessages.add(assistantMsg);
-        set((state) => ({
-          messages: [...state.messages, assistantMsg],
-          conversationState: newState,
-          loading: false,
-        }));
-        return;
-      }
-
-      // ---- Phase: idle → normal flow ----
-      // Intent recognition
+      // Intent recognition: only distinguish planning vs normal
       const intent = await recognizeIntent(content, updatedContext);
 
-      // chat / unknown → direct AI conversation
-      if (intent === 'chat' || intent === 'unknown') {
-        const response = await sendMessage(content);
-        const assistantMsg: ChatMessage = {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: response.text,
-          actions: response.actions,
-          timestamp: new Date().toISOString(),
-        };
-        await db.chatMessages.add(assistantMsg);
-        set((state) => ({
-          messages: [...state.messages, assistantMsg],
-          conversationState: {
+      // Planning intents → generate multi-step plan via AI (no tools)
+      if (intent !== 'chat' && intent !== 'unknown') {
+        const actions = await planActions(intent, {}, updatedContext);
+
+        if (actions.length > 0) {
+          const summaryText = generatePlanSummary(intent, actions);
+          const newState: ConversationState = {
             ...createInitialConversationState(),
+            currentIntent: intent,
+            phase: 'executing',
             context: updatedContext,
-          },
-          loading: false,
-        }));
-        return;
+          };
+
+          const assistantMsg: ChatMessage = {
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            content: summaryText,
+            actions,
+            timestamp: new Date().toISOString(),
+          };
+          await db.chatMessages.add(assistantMsg);
+          set((state) => ({
+            messages: [...state.messages, assistantMsg],
+            conversationState: newState,
+            loading: false,
+          }));
+          return;
+        }
+
+        // Plan generation returned empty → fall through to normal AI conversation
       }
 
-      // Slot collection
-      const { slots, missingSlots } = await collectSlots(content, intent, {});
-
-      if (missingSlots.length > 0) {
-        const askText = generateAskMessage(intent, missingSlots);
-        const newState: ConversationState = {
-          ...createInitialConversationState(),
-          currentIntent: intent,
-          slots,
-          missingSlots,
-          phase: 'slot_filling',
-          context: updatedContext,
-        };
-
-        const assistantMsg: ChatMessage = {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: askText,
-          actions: [],
-          timestamp: new Date().toISOString(),
-        };
-        await db.chatMessages.add(assistantMsg);
-        set((state) => ({
-          messages: [...state.messages, assistantMsg],
-          conversationState: newState,
-          loading: false,
-        }));
-        return;
-      }
-
-      // Slots complete → plan
-      const actions = await planActions(intent, slots, updatedContext);
-
-      if (actions.length === 0) {
-        const response = await sendMessage(content);
-        const assistantMsg: ChatMessage = {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: response.text,
-          actions: response.actions,
-          timestamp: new Date().toISOString(),
-        };
-        await db.chatMessages.add(assistantMsg);
-        set((state) => ({
-          messages: [...state.messages, assistantMsg],
-          conversationState: {
-            ...createInitialConversationState(),
-            context: updatedContext,
-          },
-          loading: false,
-        }));
-        return;
-      }
-
-      // Has actions → show for confirmation
-      const summaryText = generatePlanSummary(intent, actions);
-      const newState: ConversationState = {
-        ...createInitialConversationState(),
-        currentIntent: intent,
-        slots,
-        phase: 'executing',
-        context: updatedContext,
-      };
-
+      // Normal flow: AI + tools (handles CRUD, multi-todo, chat, etc.)
+      const response = await sendMessage(content);
       const assistantMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: summaryText,
-        actions,
+        content: response.text,
+        actions: response.actions,
         timestamp: new Date().toISOString(),
       };
       await db.chatMessages.add(assistantMsg);
       set((state) => ({
         messages: [...state.messages, assistantMsg],
-        conversationState: newState,
+        conversationState: {
+          ...createInitialConversationState(),
+          context: updatedContext,
+        },
         loading: false,
       }));
     } catch (error) {
@@ -429,15 +294,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
 /** Generate plan summary text */
 function generatePlanSummary(intent: Intent, actions: AiAction[]): string {
   const intentLabels: Record<string, string> = {
-    add_todo: '创建待办',
-    update_todo: '修改待办',
-    delete_todo: '删除待办',
-    add_plan: '创建学习计划',
-    update_plan: '修改学习计划',
-    delete_plan: '删除学习计划',
-    add_note: '创建笔记',
-    update_note: '修改笔记',
-    delete_note: '删除笔记',
     plan_weekly: '周计划',
     plan_study: '学习规划',
     plan_schedule: '日程安排',

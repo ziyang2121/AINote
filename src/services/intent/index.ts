@@ -3,7 +3,7 @@ import { INTENT_RULES } from './definitions';
 import { recognizeIntentWithAI } from './aiRecognizer';
 
 /**
- * 规则匹配：计算输入与规则的匹配分数
+ * 规则匹配：只针对规划类意图匹配
  */
 function matchWithRules(input: string): { intent: Intent; score: number } | null {
   let bestMatch: { intent: Intent; score: number } | null = null;
@@ -32,22 +32,36 @@ function matchWithRules(input: string): { intent: Intent; score: number } | null
 }
 
 /**
- * 意图识别入口：规则优先，AI fallback
+ * 意图识别入口：只识别规划类意图，其余一律返回 chat
+ * CRUD 操作（add_todo 等）交给 AI + tools 自然处理
  */
 export async function recognizeIntent(
   input: string,
   context: ConversationContext,
 ): Promise<Intent> {
+  // 1. Rule matching for planning intents
   const ruleResult = matchWithRules(input);
   if (ruleResult && ruleResult.score >= 2) {
     return ruleResult.intent;
   }
 
+  // 2. AI fallback for planning intent detection
   try {
-    return await recognizeIntentWithAI(input, context.conversationTurn);
+    const aiIntent = await recognizeIntentWithAI(input, context.conversationTurn);
+    // Only accept planning intents from AI; everything else → chat
+    const planningIntents: Intent[] = [
+      'plan_weekly', 'plan_study', 'plan_schedule',
+      'suggest_todos', 'analyze_progress',
+    ];
+    if (planningIntents.includes(aiIntent)) {
+      return aiIntent;
+    }
   } catch {
-    return 'chat';
+    // AI recognition failed, fall through
   }
+
+  // 3. Default: chat (let AI + tools handle CRUD naturally)
+  return 'chat';
 }
 
 export { isComplexIntent } from './definitions';
