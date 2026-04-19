@@ -317,9 +317,24 @@ export interface AiResponse {
   toolCalls?: ZhipuToolCall[];
 }
 
-export async function callApi(messages: ZhipuMessage[]): Promise<ZhipuMessage> {
+export async function callApi(messages: ZhipuMessage[], options?: { noTools?: boolean }): Promise<ZhipuMessage> {
   const { apiKey, model } = useSettingsStore.getState();
   if (!apiKey) throw new Error('请先在设置中配置 API Key');
+
+  const body: Record<string, unknown> = {
+    model,
+    messages,
+    temperature: 0.3,
+    max_tokens: 4096,
+  };
+
+  // Internal modules (intent recognition, slot extraction, planning) need
+  // pure text responses — sending tools causes the model to call them
+  // instead of returning the expected JSON/text format.
+  if (!options?.noTools) {
+    body.tools = tools;
+    body.tool_choice = 'auto';
+  }
 
   const response = await fetch(API_URL, {
     method: 'POST',
@@ -327,14 +342,7 @@ export async function callApi(messages: ZhipuMessage[]): Promise<ZhipuMessage> {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      model,
-      messages,
-      tools,
-      tool_choice: 'auto',
-      temperature: 0.3,
-      max_tokens: 4096,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {

@@ -30,7 +30,7 @@ async function extractSlotsFromInput(
     { role: 'user', content: input },
   ];
 
-  const response = await callApi(messages);
+  const response = await callApi(messages, { noTools: true });
   const text = (response.content ?? '').trim();
 
   try {

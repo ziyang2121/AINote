@@ -100,7 +100,7 @@ export async function generateComplexPlan(
     { role: 'user', content: '请生成计划' },
   ];
 
-  const response = await callApi(messages);
+  const response = await callApi(messages, { noTools: true });
   const text = (response.content ?? '').trim();
 
   try {

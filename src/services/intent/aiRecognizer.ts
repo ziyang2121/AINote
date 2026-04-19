@@ -32,7 +32,7 @@ ${ALL_INTENTS.map((i) => `- ${i}`).join('\n')}
     },
   ];
 
-  const response = await callApi(messages);
+  const response = await callApi(messages, { noTools: true });
   const text = (response.content ?? '').trim().toLowerCase();
 
   for (const intent of ALL_INTENTS) {
