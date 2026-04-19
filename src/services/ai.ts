@@ -317,7 +317,7 @@ export interface AiResponse {
   toolCalls?: ZhipuToolCall[];
 }
 
-async function callApi(messages: ZhipuMessage[]): Promise<ZhipuMessage> {
+export async function callApi(messages: ZhipuMessage[]): Promise<ZhipuMessage> {
   const { apiKey, model } = useSettingsStore.getState();
   if (!apiKey) throw new Error('请先在设置中配置 API Key');
 
