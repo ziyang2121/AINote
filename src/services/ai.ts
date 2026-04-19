@@ -516,6 +516,32 @@ export async function executeAction(action: AiAction): Promise<string> {
         await store.deleteNote(payload.id as string);
         return `成功删除笔记，ID: ${payload.id}`;
       }
+      case 'list_todo': {
+        const store = useTodoStore.getState();
+        const list = store.todos.map(t => `[${t.completed ? '✓' : '○'}] ${t.title} (P${t.priority})`).join('\n');
+        return list || '暂无待办事项';
+      }
+      case 'complete_todo': {
+        const store = useTodoStore.getState();
+        await store.updateTodo(payload.id as string, { completed: true });
+        return `已完成待办事项，ID: ${payload.id}`;
+      }
+      case 'list_plan': {
+        const store = useLearningStore.getState();
+        const list = store.plans.map(p => `- ${p.title}`).join('\n');
+        return list || '暂无学习计划';
+      }
+      case 'list_note': {
+        const store = useNoteStore.getState();
+        const list = store.notes.map(n => `- ${n.title}`).join('\n');
+        return list || '暂无笔记';
+      }
+      case 'plan_weekly':
+      case 'plan_study':
+      case 'plan_schedule':
+      case 'suggest_todos':
+      case 'analyze_progress':
+        return `复杂意图 ${action.type} 应通过规划引擎处理`;
       default:
         return `未知操作类型: ${action.type}`;
     }
@@ -547,6 +573,15 @@ function describeAction(name: string, args: Record<string, unknown>): string {
     case 'add_note': return `创建笔记: ${args.title}`;
     case 'update_note': return `修改笔记 (${args.id})`;
     case 'delete_note': return `删除笔记: ${args.id}`;
+    case 'list_todo': return '列出待办事项';
+    case 'complete_todo': return `完成待办: ${args.id}`;
+    case 'list_plan': return '列出学习计划';
+    case 'list_note': return '列出笔记';
+    case 'plan_weekly': return '制定周计划';
+    case 'plan_study': return '制定学习规划';
+    case 'plan_schedule': return '安排日程';
+    case 'suggest_todos': return '建议待办';
+    case 'analyze_progress': return '分析进度';
     default: return `未知操作: ${name}`;
   }
 }

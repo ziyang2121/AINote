@@ -8,7 +8,7 @@ import ChatMessageBubble from './ChatMessageBubble';
 export default function AiChatWindow() {
   const [open, setOpen] = useState(false);
   const [inputValue, setInputValue] = useState('');
-  const { messages, loading, loadMessages, send, clearMessages } = useChatStore();
+  const { messages, loading, conversationState, loadMessages, send, clearMessages } = useChatStore();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { apiKey } = useSettingsStore();
 
@@ -81,6 +81,14 @@ export default function AiChatWindow() {
 
         {/* 消息列表 */}
         <div style={{ flex: 1, padding: '0 16px', overflowY: 'auto' }}>
+          {conversationState.phase !== 'idle' && conversationState.phase !== 'completed' && (
+            <div style={{ padding: '4px 12px', fontSize: 12, color: '#888', background: '#fafafa', borderRadius: 4 }}>
+              {conversationState.phase === 'slot_filling' && '等待补充信息...'}
+              {conversationState.phase === 'executing' && '等待确认操作...'}
+              {conversationState.phase === 'planning' && '正在规划...'}
+              {conversationState.phase === 'intent_recognition' && '理解中...'}
+            </div>
+          )}
           {messages.length === 0 && (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
