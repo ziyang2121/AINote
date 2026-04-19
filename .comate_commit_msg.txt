@@ -1,0 +1,5 @@
+refactor: remove unused slots module and mapper, simplify planning
+
+- Deleted src/services/slots/ (no longer used after architecture change)
+- Deleted src/services/planning/mapper.ts (CRUD handled by AI+tools)
+- Simplified planning/index.ts to only handle complex planning intents
